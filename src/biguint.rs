@@ -1,7 +1,7 @@
 use crate::big_digit::{self, BigDigit, BigDigits};
 
+use crate::allocator::{vec, Vec};
 use alloc::string::String;
-use alloc::vec::Vec;
 use core::cmp;
 use core::cmp::Ordering;
 use core::default::Default;
@@ -885,17 +885,18 @@ impl num_traits::FromBytes for BigUint {
     }
 }
 
-impl num_traits::ToBytes for BigUint {
-    type Bytes = Vec<u8>;
+// FIXME(vklachkov): Restore ToBytes.
+// impl num_traits::ToBytes for BigUint {
+//     type Bytes = Vec<u8>;
 
-    fn to_be_bytes(&self) -> Self::Bytes {
-        self.to_bytes_be()
-    }
+//     fn to_be_bytes(&self) -> Self::Bytes {
+//         self.to_bytes_be()
+//     }
 
-    fn to_le_bytes(&self) -> Self::Bytes {
-        self.to_bytes_le()
-    }
-}
+//     fn to_le_bytes(&self) -> Self::Bytes {
+//         self.to_bytes_le()
+//     }
+// }
 
 pub(crate) trait IntDigits {
     fn digits(&self) -> &[BigDigit];

@@ -2,6 +2,7 @@ use super::addition::__add2;
 use super::shift::biguint_shl;
 use super::{cmp_slice, BigUint};
 
+use crate::allocator::vec;
 use crate::big_digit::{self, BigDigit, BigDigits, DoubleBigDigit, BITS};
 use crate::UsizePromotion;
 

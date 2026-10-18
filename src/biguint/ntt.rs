@@ -1,6 +1,6 @@
 #![forbid(unsafe_code)]
 
-use super::{BigDigit, Vec};
+use super::{vec, BigDigit, Vec};
 use core::cmp::max;
 use core::iter::zip;
 

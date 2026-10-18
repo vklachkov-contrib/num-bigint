@@ -14,7 +14,7 @@ edition = "2021"
 rust-version = "1.60"
 
 [features]
-default = ["std"]
+default = ["std", "allocator-api2"]
 std = ["num-integer/std", "num-traits/std"]
 arbitrary = ["dep:arbitrary"]
 quickcheck = ["dep:quickcheck"]
@@ -23,6 +23,8 @@ rand_core_0_9 = ["dep:rand_core_0_9"]
 rand_0_10 = ["rand_core_0_10", "dep:rand_0_10"]
 rand_core_0_10 = ["dep:rand_core_0_10"]
 serde = ["dep:serde"]
+allocator-api2 = ["dep:allocator-api2"]
+nightly = []
 
 [package.metadata.docs.rs]
 features = ["std", "serde", "rand_0_10", "rand_0_9", "quickcheck", "arbitrary"]
@@ -97,3 +99,9 @@ default-features = false
 optional = true
 version = "1"
 default-features = false
+
+[dependencies.allocator-api2]
+optional = true
+version = "0.2.9"
+default-features = false
+features = ["alloc"]

@@ -2,6 +2,7 @@ use super::addition::{__add2, add2};
 use super::subtraction::sub2;
 use super::{biguint_from_vec, cmp_slice, BigUint, IntDigits};
 
+use crate::allocator::{vec, Vec};
 use crate::big_digit::{self, BigDigit, BigDigits, DoubleBigDigit};
 use crate::Sign::{self, Minus, NoSign, Plus};
 use crate::{BigInt, UsizePromotion};
@@ -463,12 +464,12 @@ fn sub_sign(mut a: &[BigDigit], mut b: &[BigDigit]) -> (Sign, BigUint) {
 
     match cmp_slice(a, b) {
         Ordering::Greater => {
-            let mut a = a.to_vec();
+            let mut a = Vec::from(a);
             sub2(&mut a, b);
             (Plus, biguint_from_vec(a))
         }
         Ordering::Less => {
-            let mut b = b.to_vec();
+            let mut b = Vec::from(b);
             sub2(&mut b, a);
             (Minus, biguint_from_vec(b))
         }

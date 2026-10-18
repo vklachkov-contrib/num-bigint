@@ -7,11 +7,11 @@ use super::addition::add2;
 use super::division::{div_rem_digit, FAST_DIV_WIDE};
 use super::multiplication::mac_with_carry;
 
+use crate::allocator::{vec, Vec};
 use crate::big_digit::{self, BigDigit, BigDigits};
 use crate::ParseBigIntError;
 use crate::TryFromBigIntError;
 
-use alloc::vec::Vec;
 use core::cmp::Ordering::{Equal, Greater, Less};
 use core::convert::TryFrom;
 use core::str::FromStr;
@@ -813,14 +813,19 @@ pub(super) fn to_radix_le(u: &BigUint, radix: u32) -> Vec<u8> {
     }
 }
 
-pub(crate) fn to_str_radix_reversed(u: &BigUint, radix: u32) -> Vec<u8> {
+pub(crate) fn to_str_radix_reversed(u: &BigUint, radix: u32) -> alloc::vec::Vec<u8> {
     assert!(2 <= radix && radix <= 36, "The radix must be within 2...36");
 
     if u.is_zero() {
-        return vec![b'0'];
+        return alloc::vec![b'0'];
     }
 
-    let mut res = to_radix_le(u, radix);
+    let mut res = {
+        let raw = to_radix_le(u, radix);
+        let (ptr, length, capacity) = raw.into_raw_parts();
+        // SAFETY: безопасно, мамой клянусь!
+        unsafe { alloc::vec::Vec::from_raw_parts(ptr, length, capacity) }
+    };
 
     // Now convert everything to ASCII digits.
     for r in &mut res {

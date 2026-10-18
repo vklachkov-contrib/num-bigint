@@ -125,6 +125,8 @@ use core::fmt;
 #[macro_use]
 mod macros;
 
+mod allocator;
+
 mod bigint;
 mod bigrand;
 mod biguint;

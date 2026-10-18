@@ -2,7 +2,6 @@
 #![allow(clippy::suspicious_arithmetic_impl)]
 
 use alloc::string::String;
-use alloc::vec::Vec;
 use core::cmp::Ordering::{self, Equal};
 use core::default::Default;
 use core::fmt;
@@ -15,6 +14,7 @@ use num_traits::{ConstZero, Num, One, Pow, Signed, Zero};
 
 use self::Sign::{Minus, NoSign, Plus};
 
+use crate::allocator::Vec;
 use crate::big_digit::{BigDigit, BigDigits};
 use crate::biguint::to_str_radix_reversed;
 use crate::biguint::{BigUint, IntDigits, U32Digits, U64Digits};
@@ -1209,17 +1209,18 @@ impl num_traits::FromBytes for BigInt {
     }
 }
 
-impl num_traits::ToBytes for BigInt {
-    type Bytes = Vec<u8>;
+// FIXME(vklachkov): Restore ToBytes.
+// impl num_traits::ToBytes for BigInt {
+//     type Bytes = Vec<u8>;
 
-    fn to_be_bytes(&self) -> Self::Bytes {
-        self.to_signed_bytes_be()
-    }
+//     fn to_be_bytes(&self) -> Self::Bytes {
+//         self.to_signed_bytes_be()
+//     }
 
-    fn to_le_bytes(&self) -> Self::Bytes {
-        self.to_signed_bytes_le()
-    }
-}
+//     fn to_le_bytes(&self) -> Self::Bytes {
+//         self.to_signed_bytes_le()
+//     }
+// }
 
 #[test]
 fn test_from_biguint() {
