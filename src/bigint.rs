@@ -14,7 +14,7 @@ use num_traits::{ConstZero, Num, One, Pow, Signed, Zero};
 
 use self::Sign::{Minus, NoSign, Plus};
 
-use crate::allocator::Vec;
+use crate::allocator::{Allocator, Vec, Global};
 use crate::big_digit::{BigDigit, BigDigits};
 use crate::biguint::to_str_radix_reversed;
 use crate::biguint::{BigUint, IntDigits, U32Digits, U64Digits};
@@ -57,14 +57,14 @@ impl Neg for Sign {
 }
 
 /// A big signed integer type.
-pub struct BigInt {
+pub struct BigInt<A: Allocator = Global> {
     sign: Sign,
-    data: BigUint,
+    data: BigUint<A>,
 }
 
 // Note: derived `Clone` doesn't specialize `clone_from`,
 // but we want to keep the allocation in `data`.
-impl Clone for BigInt {
+impl<A: Allocator + Clone> Clone for BigInt<A> {
     #[inline]
     fn clone(&self) -> Self {
         BigInt {
@@ -80,7 +80,7 @@ impl Clone for BigInt {
     }
 }
 
-impl hash::Hash for BigInt {
+impl<A: Allocator + Clone> hash::Hash for BigInt<A> {
     #[inline]
     fn hash<H: hash::Hasher>(&self, state: &mut H) {
         debug_assert!((self.sign != NoSign) ^ self.data.is_zero());
@@ -91,27 +91,27 @@ impl hash::Hash for BigInt {
     }
 }
 
-impl PartialEq for BigInt {
+impl<A: Allocator + Clone> PartialEq for BigInt<A> {
     #[inline]
-    fn eq(&self, other: &BigInt) -> bool {
+    fn eq(&self, other: &BigInt<A>) -> bool {
         debug_assert!((self.sign != NoSign) ^ self.data.is_zero());
         debug_assert!((other.sign != NoSign) ^ other.data.is_zero());
         self.sign == other.sign && (self.sign == NoSign || self.data == other.data)
     }
 }
 
-impl Eq for BigInt {}
-
-impl PartialOrd for BigInt {
+impl<A: Allocator + Clone> PartialOrd for BigInt<A> {
     #[inline]
-    fn partial_cmp(&self, other: &BigInt) -> Option<Ordering> {
+    fn partial_cmp(&self, other: &BigInt<A>) -> Option<Ordering> {
         Some(self.cmp(other))
     }
 }
 
-impl Ord for BigInt {
+impl<A: Allocator + Clone> Eq for BigInt<A> {}
+
+impl<A: Allocator + Clone> Ord for BigInt<A> {
     #[inline]
-    fn cmp(&self, other: &BigInt) -> Ordering {
+    fn cmp(&self, other: &BigInt<A>) -> Ordering {
         debug_assert!((self.sign != NoSign) ^ self.data.is_zero());
         debug_assert!((other.sign != NoSign) ^ other.data.is_zero());
         let scmp = self.sign.cmp(&other.sign);
@@ -127,7 +127,7 @@ impl Ord for BigInt {
     }
 }
 
-impl Default for BigInt {
+impl Default for BigInt<Global> {
     #[inline]
     fn default() -> BigInt {
         Self::ZERO
@@ -533,13 +533,13 @@ impl Roots for BigInt {
     }
 }
 
-impl IntDigits for BigInt {
+impl<A: Allocator + Clone> IntDigits<A> for BigInt<A> {
     #[inline]
     fn digits(&self) -> &[BigDigit] {
         self.data.digits()
     }
     #[inline]
-    fn digits_mut(&mut self) -> &mut BigDigits {
+    fn digits_mut(&mut self) -> &mut BigDigits<A> {
         self.data.digits_mut()
     }
     #[inline]

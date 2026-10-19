@@ -55,35 +55,50 @@ const MIN_NON_ZERO_CAP: usize = 4;
 /// amortized growth, never less than `min_non_zero_cap(size)`. So when we're spilling from
 /// `Inline` to `Heap`, we use the same minimum capacity that we'd have with a pure `Vec`.
 #[inline]
-fn heap_with_capacity(capacity: usize) -> Vec<BigDigit> {
-    Vec::with_capacity(capacity.max(MIN_NON_ZERO_CAP))
+fn heap_with_capacity_in<A: Allocator + Clone>(capacity: usize, alloc: &A) -> Vec<BigDigit, A> {
+    Vec::with_capacity_in(capacity.max(MIN_NON_ZERO_CAP), alloc.clone())
 }
 
 pub(crate) enum BigDigits<A: Allocator = Global> {
     Inline(Option<BigDigit>, A),
-    Heap(Vec<BigDigit>),
+    Heap(Vec<BigDigit, A>),
 }
 
-impl BigDigits {
+impl BigDigits<Global> {
     pub(crate) const ZERO: Self = BigDigits::Inline(None, Global);
     pub(crate) const ONE: Self = BigDigits::Inline(Some(1), Global);
 
     #[inline]
     pub(crate) const fn from_digit(x: BigDigit) -> Self {
-        if x == 0 {
-            BigDigits::ZERO
-        } else {
-            BigDigits::Inline(Some(x), Global)
-        }
+        Self::from_digit_in(x, Global)
     }
 
     #[inline]
     pub(crate) fn from_slice(slice: &[BigDigit]) -> Self {
+        Self::from_slice_in(slice, Global)
+    }
+}
+
+impl<A: Allocator> BigDigits<A> {
+    #[inline]
+    pub(crate) const fn from_digit_in(x: BigDigit, alloc: A) -> Self {
+        if x == 0 {
+            BigDigits::Inline(None, alloc)
+        } else {
+            BigDigits::Inline(Some(x), alloc)
+        }
+    }
+
+    #[inline]
+    pub(crate) fn from_slice_in(slice: &[BigDigit], alloc: A) -> Self
+    where
+        A: Clone,
+    {
         match slice {
-            &[] => BigDigits::ZERO,
-            &[x] => BigDigits::Inline(Some(x), Global),
+            &[] => BigDigits::Inline(None, alloc),
+            &[x] => BigDigits::Inline(Some(x), alloc),
             xs => {
-                let mut vec = heap_with_capacity(xs.len());
+                let mut vec = heap_with_capacity_in(xs.len(), &alloc);
                 vec.extend_from_slice(xs);
                 BigDigits::Heap(vec)
             }
@@ -91,7 +106,7 @@ impl BigDigits {
     }
 
     #[inline]
-    pub(crate) fn from_vec(xs: Vec<BigDigit>) -> Self {
+    pub(crate) fn from_vec(xs: Vec<BigDigit, A>) -> Self {
         BigDigits::Heap(xs)
     }
 
@@ -104,11 +119,14 @@ impl BigDigits {
     }
 
     #[inline]
-    pub(crate) fn push(&mut self, y: BigDigit) {
+    pub(crate) fn push(&mut self, y: BigDigit)
+    where
+        A: Clone,
+    {
         match &mut *self {
             BigDigits::Inline(x @ None, _) => *x = Some(y),
-            BigDigits::Inline(Some(x), _) => {
-                let mut xs = Vec::with_capacity(MIN_NON_ZERO_CAP);
+            BigDigits::Inline(Some(x), alloc) => {
+                let mut xs = heap_with_capacity_in(MIN_NON_ZERO_CAP, alloc);
                 xs.push(*x);
                 xs.push(y);
                 *self = BigDigits::Heap(xs);
@@ -160,12 +178,15 @@ impl BigDigits {
     }
 
     #[inline]
-    pub(crate) fn shrink(&mut self) {
+    pub(crate) fn shrink(&mut self)
+    where
+        A: Clone,
+    {
         if let BigDigits::Heap(xs) = self {
             if xs.len() < xs.capacity() / 2 {
                 match **xs {
-                    [] => *self = BigDigits::ZERO,
-                    [x] => *self = BigDigits::Inline(Some(x), Global),
+                    [] => *self = BigDigits::Inline(None, xs.allocator().clone()),
+                    [x] => *self = BigDigits::Inline(Some(x), xs.allocator().clone()),
                     _ => xs.shrink_to((xs.len() + 1).max(MIN_NON_ZERO_CAP)),
                 }
             }
@@ -185,7 +206,10 @@ impl BigDigits {
     /// Strips off trailing zero bigdigits - most algorithms require
     /// the most significant digit in the number to be nonzero.
     #[inline]
-    pub(crate) fn normalize(&mut self) {
+    pub(crate) fn normalize(&mut self)
+    where
+        A: Clone,
+    {
         match self {
             BigDigits::Inline(x, _) => {
                 if let Some(0) = *x {
@@ -229,12 +253,15 @@ impl BigDigits {
         }
     }
 
-    pub(crate) fn reserve(&mut self, additional: usize) {
+    pub(crate) fn reserve(&mut self, additional: usize)
+    where
+        A: Clone,
+    {
         match &mut *self {
-            BigDigits::Inline(opt_x, _) => {
+            BigDigits::Inline(opt_x, alloc) => {
                 let capacity = usize::from(opt_x.is_some()) + additional;
                 if capacity > 1 {
-                    let mut vec = heap_with_capacity(capacity);
+                    let mut vec = heap_with_capacity_in(capacity, alloc);
                     if let Some(x) = *opt_x {
                         vec.push(x);
                     }
@@ -245,9 +272,12 @@ impl BigDigits {
         }
     }
 
-    pub(crate) fn resize(&mut self, len: usize, value: BigDigit) {
+    pub(crate) fn resize(&mut self, len: usize, value: BigDigit)
+    where
+        A: Clone,
+    {
         match &mut *self {
-            BigDigits::Inline(x, _) => match len {
+            BigDigits::Inline(x, alloc) => match len {
                 0 => *x = None,
                 1 => {
                     if x.is_none() {
@@ -255,7 +285,7 @@ impl BigDigits {
                     }
                 }
                 _ => {
-                    let mut xs = heap_with_capacity(len);
+                    let mut xs = heap_with_capacity_in(len, alloc);
                     if let Some(x) = *x {
                         xs.push(x);
                     }
@@ -267,13 +297,18 @@ impl BigDigits {
         }
     }
 
-    pub(crate) fn extend_from_slice(&mut self, ys: &[BigDigit]) {
+    pub(crate) fn extend_from_slice(&mut self, ys: &[BigDigit])
+    where
+        A: Clone,
+    {
         match &mut *self {
-            BigDigits::Inline(None, _) => *self = BigDigits::from_slice(ys),
-            BigDigits::Inline(Some(x), _) => {
+            BigDigits::Inline(None, alloc) => {
+                *self = BigDigits::from_slice_in(ys, alloc.clone());
+            }
+            BigDigits::Inline(Some(x), alloc) => {
                 let len = ys.len() + 1;
                 if len > 1 {
-                    let mut xs = heap_with_capacity(len);
+                    let mut xs = heap_with_capacity_in(len, alloc);
                     xs.push(*x);
                     xs.extend_from_slice(ys);
                     *self = BigDigits::Heap(xs);
@@ -285,10 +320,11 @@ impl BigDigits {
 
     pub(crate) fn extend<I>(&mut self, mut iter: I)
     where
+        A: Clone,
         I: ExactSizeIterator<Item = BigDigit>,
     {
         match &mut *self {
-            BigDigits::Inline(x, _) => {
+            BigDigits::Inline(x, alloc) => {
                 if x.is_none() {
                     match iter.next() {
                         Some(y) => *x = Some(y),
@@ -297,7 +333,7 @@ impl BigDigits {
                 }
                 if let Some(y) = iter.next() {
                     let len = iter.len().saturating_add(2);
-                    let mut xs = heap_with_capacity(len);
+                    let mut xs = heap_with_capacity_in(len, alloc);
                     xs.push(x.unwrap());
                     xs.push(y);
                     xs.extend(iter);
@@ -309,12 +345,12 @@ impl BigDigits {
     }
 }
 
-impl Clone for BigDigits {
+impl<A: Allocator + Clone> Clone for BigDigits<A> {
     #[inline]
     fn clone(&self) -> Self {
         match self {
-            BigDigits::Inline(x, _) => BigDigits::Inline(*x, Global),
-            BigDigits::Heap(xs) => BigDigits::from_slice(xs),
+            BigDigits::Inline(x, alloc) => BigDigits::Inline(*x, alloc.clone()),
+            BigDigits::Heap(xs) => BigDigits::from_slice_in(xs, xs.allocator().clone()),
         }
     }
 
@@ -332,7 +368,7 @@ impl Clone for BigDigits {
     }
 }
 
-impl core::ops::Deref for BigDigits {
+impl<A: Allocator> core::ops::Deref for BigDigits<A> {
     type Target = [BigDigit];
 
     #[inline]
@@ -345,7 +381,7 @@ impl core::ops::Deref for BigDigits {
     }
 }
 
-impl core::ops::DerefMut for BigDigits {
+impl<A: Allocator> core::ops::DerefMut for BigDigits<A> {
     #[inline]
     fn deref_mut(&mut self) -> &mut Self::Target {
         match self {
@@ -358,7 +394,7 @@ impl core::ops::DerefMut for BigDigits {
 
 /// The capacity of a one digit `BigDigits` after `op`.
 #[cfg(test)]
-fn capacity_after(op: impl FnOnce(&mut BigDigits)) -> usize {
+fn capacity_after(op: impl FnOnce(&mut BigDigits<Global>)) -> usize {
     let mut x = BigDigits::from_digit(1);
     op(&mut x);
     x.capacity()

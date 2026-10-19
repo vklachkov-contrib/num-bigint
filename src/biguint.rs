@@ -1,6 +1,6 @@
 use crate::big_digit::{self, BigDigit, BigDigits};
 
-use crate::allocator::{vec, Vec};
+use crate::allocator::{vec, Allocator, Global, Vec};
 use alloc::string::String;
 use core::cmp;
 use core::cmp::Ordering;
@@ -45,13 +45,28 @@ fn ilog2<T: PrimInt>(v: T) -> u8 {
 }
 
 /// A big unsigned integer type.
-pub struct BigUint {
-    data: BigDigits,
+pub struct BigUint<A: Allocator = Global> {
+    data: BigDigits<A>,
+}
+
+impl<A: Allocator> BigUint<A> {
+    #[inline]
+    pub(crate) fn is_zero(&self) -> bool {
+        self.data.is_empty()
+    }
+
+    #[inline]
+    fn to_str_radix_generic(&self, radix: u32) -> String {
+        let value = BigUint {
+            data: BigDigits::from_slice(&self.data),
+        };
+        value.to_str_radix(radix)
+    }
 }
 
 // Note: derived `Clone` doesn't specialize `clone_from`,
 // but we want to keep the allocation in `data`.
-impl Clone for BigUint {
+impl<A: Allocator + Clone> Clone for BigUint<A> {
     #[inline]
     fn clone(&self) -> Self {
         BigUint {
@@ -65,7 +80,7 @@ impl Clone for BigUint {
     }
 }
 
-impl hash::Hash for BigUint {
+impl<A: Allocator + Clone> hash::Hash for BigUint<A> {
     #[inline]
     fn hash<H: hash::Hasher>(&self, state: &mut H) {
         debug_assert!(self.data.is_normal());
@@ -73,26 +88,26 @@ impl hash::Hash for BigUint {
     }
 }
 
-impl PartialEq for BigUint {
+impl<A: Allocator + Clone> PartialEq for BigUint<A> {
     #[inline]
-    fn eq(&self, other: &BigUint) -> bool {
+    fn eq(&self, other: &BigUint<A>) -> bool {
         debug_assert!(self.data.is_normal());
         debug_assert!(other.data.is_normal());
         *self.data == *other.data
     }
 }
-impl Eq for BigUint {}
-
-impl PartialOrd for BigUint {
+impl<A: Allocator + Clone> PartialOrd for BigUint<A> {
     #[inline]
-    fn partial_cmp(&self, other: &BigUint) -> Option<Ordering> {
+    fn partial_cmp(&self, other: &BigUint<A>) -> Option<Ordering> {
         Some(self.cmp(other))
     }
 }
 
-impl Ord for BigUint {
+impl<A: Allocator + Clone> Eq for BigUint<A> {}
+
+impl<A: Allocator + Clone> Ord for BigUint<A> {
     #[inline]
-    fn cmp(&self, other: &BigUint) -> Ordering {
+    fn cmp(&self, other: &BigUint<A>) -> Ordering {
         debug_assert!(self.data.is_normal());
         debug_assert!(other.data.is_normal());
         cmp_slice(&self.data, &other.data)
@@ -107,52 +122,52 @@ fn cmp_slice(a: &[BigDigit], b: &[BigDigit]) -> Ordering {
     }
 }
 
-impl Default for BigUint {
+impl Default for BigUint<Global> {
     #[inline]
     fn default() -> BigUint {
         Self::ZERO
     }
 }
 
-impl fmt::Debug for BigUint {
+impl<A: Allocator> fmt::Debug for BigUint<A> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         fmt::Display::fmt(self, f)
     }
 }
 
-impl fmt::Display for BigUint {
+impl<A: Allocator> fmt::Display for BigUint<A> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.pad_integral(true, "", &self.to_str_radix(10))
+        f.pad_integral(true, "", &self.to_str_radix_generic(10))
     }
 }
 
-impl fmt::LowerHex for BigUint {
+impl<A: Allocator> fmt::LowerHex for BigUint<A> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.pad_integral(true, "0x", &self.to_str_radix(16))
+        f.pad_integral(true, "0x", &self.to_str_radix_generic(16))
     }
 }
 
-impl fmt::UpperHex for BigUint {
+impl<A: Allocator> fmt::UpperHex for BigUint<A> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        let mut s = self.to_str_radix(16);
+        let mut s = self.to_str_radix_generic(16);
         s.make_ascii_uppercase();
         f.pad_integral(true, "0x", &s)
     }
 }
 
-impl fmt::Binary for BigUint {
+impl<A: Allocator> fmt::Binary for BigUint<A> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.pad_integral(true, "0b", &self.to_str_radix(2))
+        f.pad_integral(true, "0b", &self.to_str_radix_generic(2))
     }
 }
 
-impl fmt::Octal for BigUint {
+impl<A: Allocator> fmt::Octal for BigUint<A> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.pad_integral(true, "0o", &self.to_str_radix(8))
+        f.pad_integral(true, "0o", &self.to_str_radix_generic(8))
     }
 }
 
-impl Zero for BigUint {
+impl Zero for BigUint<Global> {
     #[inline]
     fn zero() -> BigUint {
         Self::ZERO
@@ -169,18 +184,18 @@ impl Zero for BigUint {
     }
 }
 
-impl ConstZero for BigUint {
+impl ConstZero for BigUint<Global> {
     // forward to the inherent const
     const ZERO: Self = Self::ZERO;
 }
 
-impl LowerBounded for BigUint {
+impl LowerBounded for BigUint<Global> {
     fn min_value() -> Self {
         Self::ZERO
     }
 }
 
-impl One for BigUint {
+impl One for BigUint<Global> {
     #[inline]
     fn one() -> BigUint {
         Self::ONE
@@ -198,14 +213,14 @@ impl One for BigUint {
     }
 }
 
-impl num_traits::ConstOne for BigUint {
+impl num_traits::ConstOne for BigUint<Global> {
     // forward to the inherent const
     const ONE: Self = Self::ONE;
 }
 
-impl Unsigned for BigUint {}
+impl Unsigned for BigUint<Global> {}
 
-impl Integer for BigUint {
+impl Integer for BigUint<Global> {
     #[inline]
     fn div_rem(&self, other: &BigUint) -> (BigUint, BigUint) {
         division::div_rem_ref(self, other)
@@ -363,7 +378,7 @@ pub trait ToBigUint {
 ///
 /// The digits are in little-endian base matching `BigDigit`.
 #[inline]
-pub(crate) fn biguint_from_vec(digits: Vec<BigDigit>) -> BigUint {
+pub(crate) fn biguint_from_vec(digits: Vec<BigDigit>) -> BigUint<Global> {
     let mut n = BigUint {
         data: BigDigits::from_vec(digits),
     };
@@ -873,6 +888,14 @@ impl BigUint {
     }
 }
 
+impl<A: Allocator + Clone> BigUint<A> {
+    pub(crate) fn from_digit_in(digit: BigDigit, alloc: A) -> Self {
+        Self {
+            data: BigDigits::from_digit_in(digit, alloc),
+        }
+    }
+}
+
 impl num_traits::FromBytes for BigUint {
     type Bytes = [u8];
 
@@ -898,21 +921,21 @@ impl num_traits::FromBytes for BigUint {
 //     }
 // }
 
-pub(crate) trait IntDigits {
+pub(crate) trait IntDigits<A: Allocator + Clone> {
     fn digits(&self) -> &[BigDigit];
-    fn digits_mut(&mut self) -> &mut BigDigits;
+    fn digits_mut(&mut self) -> &mut BigDigits<A>;
     fn normalize(&mut self);
     fn capacity(&self) -> usize;
     fn len(&self) -> usize;
 }
 
-impl IntDigits for BigUint {
+impl<A: Allocator + Clone> IntDigits<A> for BigUint<A> {
     #[inline]
     fn digits(&self) -> &[BigDigit] {
         &self.data
     }
     #[inline]
-    fn digits_mut(&mut self) -> &mut BigDigits {
+    fn digits_mut(&mut self) -> &mut BigDigits<A> {
         &mut self.data
     }
     #[inline]
