@@ -1,5 +1,7 @@
 pub(crate) use self::inner::{vec, Allocator, Global, Vec};
 
+pub(crate) type StdVec<T> = alloc::vec::Vec<T>;
+
 #[cfg(feature = "nightly")]
 mod inner {
     pub(crate) use alloc::{
@@ -20,7 +22,7 @@ mod inner {
 
 #[cfg(not(any(feature = "nightly", feature = "allocator-api2")))]
 mod inner {
-    use alloc::{
+    pub(crate) use alloc::{
         alloc::{alloc, dealloc, Layout},
         vec,
         vec::Vec,

@@ -14,7 +14,7 @@ use num_traits::{ConstZero, Num, One, Pow, Signed, Zero};
 
 use self::Sign::{Minus, NoSign, Plus};
 
-use crate::allocator::{Allocator, Vec, Global};
+use crate::allocator::{Allocator, Global, StdVec};
 use crate::big_digit::{BigDigit, BigDigits};
 use crate::biguint::to_str_radix_reversed;
 use crate::biguint::{BigUint, IntDigits, U32Digits, U64Digits};
@@ -567,6 +567,38 @@ pub trait ToBigInt {
     fn to_bigint(&self) -> Option<BigInt>;
 }
 
+impl<A: Allocator + Clone> BigInt<A> {
+    /// Creates a `BigInt` from base-2^32 digits using `alloc` for storage.
+    #[inline]
+    pub fn new_in(sign: Sign, digits: &[u32], alloc: A) -> Self {
+        let mut data = BigUint::new_in(digits, alloc);
+        let sign = if sign == NoSign || data.is_zero() {
+            data.assign_from_slice_in(&[]);
+            NoSign
+        } else {
+            sign
+        };
+        Self { sign, data }
+    }
+
+    /// Creates a `BigInt` from a slice using `alloc` for storage.
+    #[inline]
+    pub fn from_slice_in(sign: Sign, digits: &[u32], alloc: A) -> Self {
+        Self::new_in(sign, digits, alloc)
+    }
+
+    /// Creates a `BigInt` from a `BigUint` while preserving its allocator.
+    #[inline]
+    pub fn from_biguint_in(sign: Sign, data: BigUint<A>) -> Self {
+        let sign = if sign == NoSign || data.is_zero() {
+            NoSign
+        } else {
+            sign
+        };
+        Self { sign, data }
+    }
+}
+
 impl BigInt {
     /// A constant [`BigInt`] with value 0, useful for static initialization.
     pub const ZERO: Self = BigInt {
@@ -590,7 +622,7 @@ impl BigInt {
     ///
     /// The base 2<sup>32</sup> digits are ordered least significant digit first.
     #[inline]
-    pub fn new(sign: Sign, digits: Vec<u32>) -> BigInt {
+    pub fn new(sign: Sign, digits: StdVec<u32>) -> BigInt {
         BigInt::from_biguint(sign, BigUint::new(digits))
     }
 
@@ -763,7 +795,7 @@ impl BigInt {
     /// assert_eq!(i.to_bytes_be(), (Sign::Minus, vec![4, 101]));
     /// ```
     #[inline]
-    pub fn to_bytes_be(&self) -> (Sign, Vec<u8>) {
+    pub fn to_bytes_be(&self) -> (Sign, StdVec<u8>) {
         (self.sign, self.data.to_bytes_be())
     }
 
@@ -778,7 +810,7 @@ impl BigInt {
     /// assert_eq!(i.to_bytes_le(), (Sign::Minus, vec![101, 4]));
     /// ```
     #[inline]
-    pub fn to_bytes_le(&self) -> (Sign, Vec<u8>) {
+    pub fn to_bytes_le(&self) -> (Sign, StdVec<u8>) {
         (self.sign, self.data.to_bytes_le())
     }
 
@@ -797,7 +829,7 @@ impl BigInt {
     /// assert_eq!(BigInt::from(112500000000i64).to_u32_digits(), (Sign::Plus, vec![830850304, 26]));
     /// ```
     #[inline]
-    pub fn to_u32_digits(&self) -> (Sign, Vec<u32>) {
+    pub fn to_u32_digits(&self) -> (Sign, StdVec<u32>) {
         (self.sign, self.data.to_u32_digits())
     }
 
@@ -817,7 +849,7 @@ impl BigInt {
     /// assert_eq!(BigInt::from(1u128 << 64).to_u64_digits(), (Sign::Plus, vec![0, 1]));
     /// ```
     #[inline]
-    pub fn to_u64_digits(&self) -> (Sign, Vec<u64>) {
+    pub fn to_u64_digits(&self) -> (Sign, StdVec<u64>) {
         (self.sign, self.data.to_u64_digits())
     }
 
@@ -871,7 +903,7 @@ impl BigInt {
     /// assert_eq!(i.to_signed_bytes_be(), vec![251, 155]);
     /// ```
     #[inline]
-    pub fn to_signed_bytes_be(&self) -> Vec<u8> {
+    pub fn to_signed_bytes_be(&self) -> StdVec<u8> {
         convert::to_signed_bytes_be(self)
     }
 
@@ -886,7 +918,7 @@ impl BigInt {
     /// assert_eq!(i.to_signed_bytes_le(), vec![155, 251]);
     /// ```
     #[inline]
-    pub fn to_signed_bytes_le(&self) -> Vec<u8> {
+    pub fn to_signed_bytes_le(&self) -> StdVec<u8> {
         convert::to_signed_bytes_le(self)
     }
 
@@ -928,7 +960,7 @@ impl BigInt {
     /// // 0xFFFF = 65535 = 2*(159^2) + 94*159 + 27
     /// ```
     #[inline]
-    pub fn to_radix_be(&self, radix: u32) -> (Sign, Vec<u8>) {
+    pub fn to_radix_be(&self, radix: u32) -> (Sign, StdVec<u8>) {
         (self.sign, self.data.to_radix_be(radix))
     }
 
@@ -947,7 +979,7 @@ impl BigInt {
     /// // 0xFFFF = 65535 = 27 + 94*159 + 2*(159^2)
     /// ```
     #[inline]
-    pub fn to_radix_le(&self, radix: u32) -> (Sign, Vec<u8>) {
+    pub fn to_radix_le(&self, radix: u32) -> (Sign, StdVec<u8>) {
         (self.sign, self.data.to_radix_le(radix))
     }
 
@@ -1209,18 +1241,17 @@ impl num_traits::FromBytes for BigInt {
     }
 }
 
-// FIXME(vklachkov): Restore ToBytes.
-// impl num_traits::ToBytes for BigInt {
-//     type Bytes = Vec<u8>;
+impl num_traits::ToBytes for BigInt {
+    type Bytes = StdVec<u8>;
 
-//     fn to_be_bytes(&self) -> Self::Bytes {
-//         self.to_signed_bytes_be()
-//     }
+    fn to_be_bytes(&self) -> Self::Bytes {
+        self.to_signed_bytes_be()
+    }
 
-//     fn to_le_bytes(&self) -> Self::Bytes {
-//         self.to_signed_bytes_le()
-//     }
-// }
+    fn to_le_bytes(&self) -> Self::Bytes {
+        self.to_signed_bytes_le()
+    }
+}
 
 #[test]
 fn test_from_biguint() {

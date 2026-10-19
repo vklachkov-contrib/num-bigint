@@ -1,6 +1,6 @@
 use crate::big_digit::{self, BigDigit, BigDigits};
 
-use crate::allocator::{vec, Allocator, Global, Vec};
+use crate::allocator::{vec, Allocator, Global, StdVec, Vec};
 use alloc::string::String;
 use core::cmp;
 use core::cmp::Ordering;
@@ -386,6 +386,53 @@ pub(crate) fn biguint_from_vec(digits: Vec<BigDigit>) -> BigUint<Global> {
     n
 }
 
+impl<A: Allocator + Clone> BigUint<A> {
+    /// Creates zero using `alloc` for all future digit storage.
+    #[inline]
+    pub fn zero_in(alloc: A) -> Self {
+        Self {
+            data: BigDigits::from_digit_in(0, alloc),
+        }
+    }
+
+    /// Creates one using `alloc` for all future digit storage.
+    #[inline]
+    pub fn one_in(alloc: A) -> Self {
+        Self {
+            data: BigDigits::from_digit_in(1, alloc),
+        }
+    }
+
+    /// Creates a `BigUint` from base-2^32 digits using `alloc` for storage.
+    ///
+    /// The input is copied. Use [`from_vec_in`](Self::from_vec_in) when an
+    /// allocator-owned input buffer can be passed without copying.
+    #[inline]
+    pub fn new_in(digits: &[u32], alloc: A) -> Self {
+        let mut result = Self::zero_in(alloc);
+        result.assign_from_slice_in(digits);
+        result
+    }
+
+    /// Alias for [`new_in`](Self::new_in) emphasizing that the input is copied.
+    #[inline]
+    pub fn from_slice_in(digits: &[u32], alloc: A) -> Self {
+        Self::new_in(digits, alloc)
+    }
+
+    /// Replaces the value from base-2^32 digits while retaining this value's allocator.
+    #[inline]
+    pub fn assign_from_slice_in(&mut self, digits: &[u32]) {
+        self.data.clear();
+        cfg_digit_expr!(
+            self.data.extend_from_slice(digits),
+            self.data.extend(digits.chunks(2).map(u32_chunk_to_u64))
+        );
+        self.data.normalize();
+    }
+
+}
+
 impl BigUint {
     /// A constant [`BigUint`] with value 0, useful for static initialization.
     pub const ZERO: Self = BigUint {
@@ -401,7 +448,7 @@ impl BigUint {
     ///
     /// The base 2<sup>32</sup> digits are ordered least significant digit first.
     #[inline]
-    pub fn new(digits: Vec<u32>) -> BigUint {
+    pub fn new(digits: StdVec<u32>) -> BigUint {
         let mut big = Self::ZERO;
 
         cfg_digit_expr!(
@@ -564,7 +611,7 @@ impl BigUint {
     /// assert_eq!(i.to_bytes_be(), vec![4, 101]);
     /// ```
     #[inline]
-    pub fn to_bytes_be(&self) -> Vec<u8> {
+    pub fn to_bytes_be(&self) -> StdVec<u8> {
         let mut v = self.to_bytes_le();
         v.reverse();
         v
@@ -581,11 +628,11 @@ impl BigUint {
     /// assert_eq!(i.to_bytes_le(), vec![101, 4]);
     /// ```
     #[inline]
-    pub fn to_bytes_le(&self) -> Vec<u8> {
+    pub fn to_bytes_le(&self) -> StdVec<u8> {
         if self.is_zero() {
-            vec![0]
+            StdVec::from([0])
         } else {
-            convert::to_bitwise_digits_le(self, 8)
+            convert::to_bitwise_digits_le(self, 8).into_iter().collect()
         }
     }
 
@@ -603,7 +650,7 @@ impl BigUint {
     /// assert_eq!(BigUint::from(112500000000u64).to_u32_digits(), vec![830850304, 26]);
     /// ```
     #[inline]
-    pub fn to_u32_digits(&self) -> Vec<u32> {
+    pub fn to_u32_digits(&self) -> StdVec<u32> {
         self.iter_u32_digits().collect()
     }
 
@@ -622,7 +669,7 @@ impl BigUint {
     /// assert_eq!(BigUint::from(1u128 << 64).to_u64_digits(), vec![0, 1]);
     /// ```
     #[inline]
-    pub fn to_u64_digits(&self) -> Vec<u64> {
+    pub fn to_u64_digits(&self) -> StdVec<u64> {
         self.iter_u64_digits().collect()
     }
 
@@ -696,10 +743,10 @@ impl BigUint {
     /// // 0xFFFF = 65535 = 2*(159^2) + 94*159 + 27
     /// ```
     #[inline]
-    pub fn to_radix_be(&self, radix: u32) -> Vec<u8> {
+    pub fn to_radix_be(&self, radix: u32) -> StdVec<u8> {
         let mut v = convert::to_radix_le(self, radix);
         v.reverse();
-        v
+        v.into_iter().collect()
     }
 
     /// Returns the integer in the requested base in little-endian digit order.
@@ -717,8 +764,8 @@ impl BigUint {
     /// // 0xFFFF = 65535 = 27 + 94*159 + 2*(159^2)
     /// ```
     #[inline]
-    pub fn to_radix_le(&self, radix: u32) -> Vec<u8> {
-        convert::to_radix_le(self, radix)
+    pub fn to_radix_le(&self, radix: u32) -> StdVec<u8> {
+        convert::to_radix_le(self, radix).into_iter().collect()
     }
 
     /// Determines the fewest bits necessary to express the [`BigUint`].
@@ -888,14 +935,6 @@ impl BigUint {
     }
 }
 
-impl<A: Allocator + Clone> BigUint<A> {
-    pub(crate) fn from_digit_in(digit: BigDigit, alloc: A) -> Self {
-        Self {
-            data: BigDigits::from_digit_in(digit, alloc),
-        }
-    }
-}
-
 impl num_traits::FromBytes for BigUint {
     type Bytes = [u8];
 
@@ -908,18 +947,17 @@ impl num_traits::FromBytes for BigUint {
     }
 }
 
-// FIXME(vklachkov): Restore ToBytes.
-// impl num_traits::ToBytes for BigUint {
-//     type Bytes = Vec<u8>;
+impl num_traits::ToBytes for BigUint {
+    type Bytes = StdVec<u8>;
 
-//     fn to_be_bytes(&self) -> Self::Bytes {
-//         self.to_bytes_be()
-//     }
+    fn to_be_bytes(&self) -> Self::Bytes {
+        self.to_bytes_be()
+    }
 
-//     fn to_le_bytes(&self) -> Self::Bytes {
-//         self.to_bytes_le()
-//     }
-// }
+    fn to_le_bytes(&self) -> Self::Bytes {
+        self.to_bytes_le()
+    }
+}
 
 pub(crate) trait IntDigits<A: Allocator + Clone> {
     fn digits(&self) -> &[BigDigit];
